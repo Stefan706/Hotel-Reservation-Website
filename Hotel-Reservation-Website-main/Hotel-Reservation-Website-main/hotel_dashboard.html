@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <title>Crystal Palace | Management Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1e293b; --accent: #c5a059; --bg: #f8fafc; --success: #10b981; --danger: #ef4444; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; display: flex; }
+        nav { width: 260px; background: var(--primary); color: white; height: 100vh; position: fixed; padding: 30px; }
+        main { margin-left: 260px; padding: 40px; width: 100%; box-sizing: border-box; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        input, select, textarea { padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; width: 100%; box-sizing: border-box; font-family: inherit; }
+        button { background: var(--accent); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; }
+        .room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; }
+        .room-card { padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0; border-left: 5px solid var(--accent); text-align: center; }
+        .busy { border-left-color: var(--danger); background: #fff1f2; }
+        .stars { color: #f59e0b; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <h2>Crystal Palace</h2>
+    <p style="opacity: 0.6; font-size: 0.8rem;">Hotel Management v4.0</p>
+</nav>
+
+<main>
+    <div class="card">
+        <h3>👥 Înregistrare Oaspete</h3>
+        <div class="form-grid">
+            <input type="text" id="clNume" placeholder="Nume Complet">
+            <input type="email" id="clEmail" placeholder="Email">
+            <input type="text" id="clTelefon" placeholder="Nr. Telefon">
+            <button onclick="addClient()">Salvează Profil</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+            <h3>🛏️ Status Camere (Astăzi)</h3>
+            <select id="hotelFilter" onchange="renderView()" style="width: 200px;"></select>
+        </div>
+        <div id="roomGrid" class="room-grid"></div>
+    </div>
+
+    <div class="card">
+        <h3>📅 Rezervare Nouă</h3>
+        <div class="form-grid">
+            <select id="resClientId"></select>
+            <select id="resHotelId" onchange="filterRooms()"></select>
+            <select id="resCamId" onchange="calculateTotal()"></select>
+        </div>
+        <div class="form-grid" style="margin-top: 15px;">
+            <input type="date" id="resIn" onchange="calculateTotal()">
+            <input type="date" id="resOut" onchange="calculateTotal()">
+            <div style="background:#f1f5f9; padding:12px; border-radius:8px; text-align:center;">
+                Total: <strong id="totalPrice">0 LEI</strong>
+            </div>
+        </div>
+        <button onclick="makeBooking()" style="margin-top: 15px; background: var(--primary);">Confirmă Rezervarea</button>
+    </div>
+
+    <div class="card">
+        <h3>⭐ Review-uri</h3>
+        <div class="form-grid">
+            <select id="revClientId"></select>
+            <select id="revCamId"></select>
+            <select id="revRating"><option value="5">5 Stele</option><option value="4">4 Stele</option><option value="3">3 Stele</option><option value="2">2 Stele</option><option value="1">1 Stea</option></select>
+        </div>
+        <textarea id="revComment" placeholder="Comentariu..." style="margin-top:10px; height: 60px;"></textarea>
+        <button onclick="addReview()" style="margin-top:10px;">Postează Review</button>
+        <div id="reviewList" style="margin-top:15px;"></div>
+    </div>
+
+    <div class="card">
+        <h3>📋 Istoric Sejururi</h3>
+        <table id="resTable"><thead><tr><th>Client</th><th>Hotel</th><th>Camera</th><th>Perioada</th></tr></thead><tbody></tbody></table>
+    </div>
+</main>
+
+<script>
+    const API = "http://localhost:8080/api";
+    let store = { hoteluri: [], camere: [], rezervari: [], clienti: [], reviews: [] };
+
+    async function refresh() {
+        try {
+            const [h, c, r, cl, rev] = await Promise.all([
+                fetch(`${API}/hoteluri`).then(r => r.json()), fetch(`${API}/camere`).then(r => r.json()),
+                fetch(`${API}/rezervari`).then(r => r.json()), fetch(`${API}/clienti`).then(r => r.json()),
+                fetch(`${API}/reviews`).then(r => r.json())
+            ]);
+            store = { hoteluri: h, camere: c, rezervari: r, clienti: cl, reviews: rev };
+
+            const hHtml = store.hoteluri.map(x => `<option value="${x.id}">${x.nume}</option>`).join("");
+            document.getElementById("hotelFilter").innerHTML = hHtml;
+            document.getElementById("resHotelId").innerHTML = hHtml;
+
+            const clHtml = store.clienti.map(x => `<option value="${x.id}">${x.nume}</option>`).join("");
+            document.getElementById("resClientId").innerHTML = clHtml;
+            document.getElementById("revClientId").innerHTML = clHtml;
+
+            renderView(); filterRooms(); renderHistory(); renderReviews();
+        } catch (e) { console.error(e); }
+    }
+
+    function renderView() {
+        const hId = document.getElementById("hotelFilter").value;
+        const azi = new Date().toISOString().split('T')[0];
+        const hCamere = store.camere.filter(c => c.hotel_id == hId);
+
+        document.getElementById("roomGrid").innerHTML = hCamere.map(c => {
+            const busy = store.rezervari.some(r => r.camera_id == c.id && azi >= r.data_check_in && azi < r.data_check_out);
+            return `
+                <div class="room-card ${busy ? 'busy' : ''}">
+                    <strong>Cam. ${c.numar_camera}</strong><br>
+                    <small>${c.tip}</small><br>
+                    <b style="color:var(--accent)">${c.pret_noapte} lei</b><br>
+                    <small style="color:${busy?'red':'green'}">${busy?'Ocupată':'Liberă'}</small>
+                </div>`;
+        }).join("");
+    }
+
+    function filterRooms() {
+        const hId = document.getElementById("resHotelId").value;
+        const hCamere = store.camere.filter(c => c.hotel_id == hId);
+        const opt = hCamere.map(c => `<option value="${c.id}" data-price="${c.pret_noapte}">Cam. ${c.numar_camera} (${c.pret_noapte} lei)</option>`).join("");
+        document.getElementById("resCamId").innerHTML = opt;
+        document.getElementById("revCamId").innerHTML = opt;
+        calculateTotal();
+    }
+
+    function calculateTotal() {
+        const sel = document.getElementById("resCamId");
+        const price = sel.options[sel.selectedIndex]?.getAttribute("data-price") || 0;
+        const d1 = new Date(document.getElementById("resIn").value);
+        const d2 = new Date(document.getElementById("resOut").value);
+        if (d1.getTime() && d2.getTime() && d2 > d1) {
+            const nights = (d2 - d1) / (1000 * 3600 * 24);
+            document.getElementById("totalPrice").innerText = (nights * price) + " LEI";
+        } else { document.getElementById("totalPrice").innerText = "0 LEI"; }
+    }
+
+    async function addClient() {
+        const data = { nume: document.getElementById("clNume").value, email: document.getElementById("clEmail").value, telefon: document.getElementById("clTelefon").value };
+        if(!data.nume || !data.telefon) return alert("Completati datele!");
+        await fetch(`${API}/clienti`, { method: "POST", body: JSON.stringify(data) });
+        alert("✅ Client adaugat!"); refresh();
+    }
+
+    async function makeBooking() {
+        const data = { client_id: document.getElementById("resClientId").value, camera_id: document.getElementById("resCamId").value, data_check_in: document.getElementById("resIn").value, data_check_out: document.getElementById("resOut").value };
+        const res = await fetch(`${API}/rezervari`, { method: "POST", body: JSON.stringify(data) });
+        if(res.ok) { alert("✅ Rezervare salvata!"); refresh(); } else { const e = await res.json(); alert("❌ " + e.error); }
+    }
+
+    async function addReview() {
+        const data = { client_id: document.getElementById("revClientId").value, camera_id: document.getElementById("revCamId").value, rating: document.getElementById("revRating").value, comentariu: document.getElementById("revComment").value };
+        await fetch(`${API}/reviews`, { method: "POST", body: JSON.stringify(data) });
+        alert("⭐ Review postat!"); refresh();
+    }
+
+    function renderReviews() { document.getElementById("reviewList").innerHTML = store.reviews.map(r => `<div style="border-bottom:1px solid #eee; padding:5px;"><strong>${r.client}</strong> (Cam. ${r.camera}): ${r.comentariu}</div>`).join(""); }
+    function renderHistory() { document.querySelector("#resTable tbody").innerHTML = store.rezervari.map(r => `<tr><td>${r.client}</td><td>${r.hotel}</td><td>${r.camera}</td><td>${r.data_check_in} / ${r.data_check_out}</td></tr>`).join(""); }
+
+    window.onload = refresh;
+</script>
+</body>
+</html>
